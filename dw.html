@@ -5,162 +5,172 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Photo Transition Generator</title>
     <style>
-        .container {
+        body {
+            font-family: Arial, sans-serif;
             max-width: 800px;
-            margin: 20px auto;
+            margin: 0 auto;
             padding: 20px;
-            text-align: center;
         }
-
         .upload-section {
             display: flex;
             gap: 20px;
-            justify-content: center;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
-
         .preview {
             width: 300px;
             height: 200px;
             border: 2px dashed #ccc;
-            margin: 10px;
-            background-size: cover;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
         }
-
-        #generateBtn {
-            padding: 12px 24px;
+        button {
+            padding: 10px 20px;
             background: #4CAF50;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            margin: 20px;
         }
-
-        #generateBtn:disabled {
+        button:disabled {
             background: #cccccc;
             cursor: not-allowed;
         }
-
-        .hidden {
-            display: none;
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
         }
-
-        #videoPreview {
-            width: 600px;
-            height: 400px;
-            margin: 20px auto;
-            border: 1px solid #ccc;
+        .error {
+            background-color: #ffdddd;
+            color: #d8000c;
+        }
+        .success {
+            background-color: #ddffdd;
+            color: #4F8A10;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Photo Transition Generator</h2>
-        
-        <div class="upload-section">
-            <div>
-                <input type="file" id="photo1" accept="image/*">
-                <div class="preview" id="preview1"></div>
-            </div>
-            <div>
-                <input type="file" id="photo2" accept="image/*">
-                <div class="preview" id="preview2"></div>
-            </div>
+    <h2>Photo Transition Generator</h2>
+    <div class="upload-section">
+        <div>
+            <input type="file" id="photo1" accept="image/*">
+            <div class="preview" id="preview1"></div>
         </div>
+        <div>
+            <input type="file" id="photo2" accept="image/*">
+            <div class="preview" id="preview2"></div>
+        </div>
+    </div>
+    <button id="generateBtn" disabled>Generate & Download Video</button>
+    <div id="status">Please upload two images to begin</div>
 
-        <button id="generateBtn" disabled>Generate & Download Video</button>
-        <canvas class="hidden" id="canvas"></canvas>
-        <video id="videoPreview" controls class="hidden"></video>
+    <script>
+        const photo1Input = document.getElementById('photo1');
+        const photo2Input = document.getElementById('photo2');
+        const preview1 = document.getElementById('preview1');
+        const preview2 = document.getElementById('preview2');
+        const generateBtn = document.getElementById('generateBtn');
+        const status = document.getElementById('status');
 
-        <script>
-            const photo1Input = document.getElementById('photo1');
-            const photo2Input = document.getElementById('photo2');
-            const preview1 = document.getElementById('preview1');
-            const preview2 = document.getElementById('preview2');
-            const generateBtn = document.getElementById('generateBtn');
-            const canvas = document.getElementById('canvas');
-            const videoPreview = document.getElementById('videoPreview');
+        let images = [];
+        let supportedFormats = [];
 
-            let images = [];
-            let mediaRecorder;
-            let recordedChunks = [];
+        // Check supported formats on page load
+        window.addEventListener('load', () => {
+            checkSupportedFormats();
+        });
 
-            // Handle image uploads
-            function handleImageUpload(file, previewElement) {
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        previewElement.style.backgroundImage = `url(${e.target.result})`;
-                        const img = new Image();
-                        img.src = e.target.result;
-                        img.onload = () => resolve(img);
-                    };
-                    reader.readAsDataURL(file);
-                });
+        function checkSupportedFormats() {
+            const testFormats = [
+                'video/webm;codecs=vp8',
+                'video/webm',
+                'video/mp4',
+                'video/mpeg'
+            ];
+            
+            supportedFormats = testFormats.filter(format => {
+                return MediaRecorder.isTypeSupported(format);
+            });
+
+            if (supportedFormats.length === 0) {
+                status.textContent = "Your browser doesn't support video recording. Please use Chrome or Firefox.";
+                status.className = "error";
+            } else {
+                status.textContent = "Ready to upload images";
+                status.className = "success";
             }
+        }
 
-            // Handle both image uploads
-            async function handleUploads() {
-                if (photo1Input.files[0] && photo2Input.files[0]) {
+        async function handleImageUpload(file, previewElement) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewElement.style.backgroundImage = `url(${e.target.result})`;
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => resolve(img);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function handleUploads() {
+            if (photo1Input.files[0] && photo2Input.files[0]) {
+                status.textContent = 'Processing images...';
+                try {
                     images = [
                         await handleImageUpload(photo1Input.files[0], preview1),
                         await handleImageUpload(photo2Input.files[0], preview2)
                     ];
                     generateBtn.disabled = false;
+                    status.textContent = 'Ready to generate video!';
+                    status.className = "success";
+                } catch (error) {
+                    status.textContent = `Error loading images: ${error.message}`;
+                    status.className = "error";
                 }
             }
+        }
 
-            // Generate video
-            async function generateVideo() {
+        async function generateVideo() {
+            try {
                 generateBtn.disabled = true;
-                videoPreview.classList.remove('hidden');
+                status.textContent = 'Generating video... (this may take 20 seconds)';
+                status.className = "";
                 
-                // Set canvas size
-                canvas.width = images[0].width;
-                canvas.height = images[0].height;
-                
-                // Setup media recorder
-                const stream = canvas.captureStream(30);
-                mediaRecorder = new MediaRecorder(stream, {
-                    mimeType: 'video/webm; codecs=vp9'
-                });
-
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) recordedChunks.push(e.data);
-                };
-
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                    const url = URL.createObjectURL(blob);
-                    videoPreview.src = url;
-                    
-                    // Create download link
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'transition-video.webm';
-                    a.click();
-                    
-                    generateBtn.disabled = false;
-                    recordedChunks = [];
-                };
-
-                // Start recording
-                mediaRecorder.start();
-
-                // Animate transition
+                const canvas = document.createElement('canvas');
+                canvas.width = 800;
+                canvas.height = 600;
                 const ctx = canvas.getContext('2d');
-                const startTime = Date.now();
+                
+                // Use the first supported format
+                const format = supportedFormats[0] || 'video/webm';
+                
+                const stream = canvas.captureStream(25);
+                const recorder = new MediaRecorder(stream, {
+                    mimeType: format
+                });
+                
+                const chunks = [];
                 const duration = 20000; // 20 seconds
+                let startTime = Date.now();
 
-                function draw() {
-                    const progress = (Date.now() - startTime) / duration;
-                    
-                    if (progress >= 1) {
-                        mediaRecorder.stop();
-                        return;
+                recorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        chunks.push(e.data);
                     }
+                };
+                
+                recorder.start(100); // Collect data every 100ms
 
+                function drawFrame() {
+                    const progress = Math.min(1, (Date.now() - startTime) / duration);
+                    
+                    // Clear canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
                     // Draw first image
                     ctx.globalAlpha = 1 - progress;
                     ctx.drawImage(images[0], 0, 0, canvas.width, canvas.height);
@@ -174,17 +184,44 @@
                     ctx.fillStyle = 'white';
                     ctx.fillRect(0, progress * canvas.height, canvas.width, 4);
 
-                    requestAnimationFrame(draw);
+                    if (progress < 1) {
+                        requestAnimationFrame(drawFrame);
+                    }
                 }
 
-                draw();
-            }
+                drawFrame();
 
-            // Event listeners
-            photo1Input.addEventListener('change', handleUploads);
-            photo2Input.addEventListener('change', handleUploads);
-            generateBtn.addEventListener('click', generateVideo);
-        </script>
-    </div>
+                setTimeout(() => {
+                    recorder.stop();
+                }, duration);
+
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: format });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `transition.${format.split('/')[1].split(';')[0]}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    
+                    status.textContent = 'Video downloaded successfully!';
+                    status.className = "success";
+                    generateBtn.disabled = false;
+                };
+
+            } catch (error) {
+                status.textContent = `Error: ${error.message}`;
+                status.className = "error";
+                generateBtn.disabled = false;
+                console.error(error);
+            }
+        }
+
+        photo1Input.addEventListener('change', handleUploads);
+        photo2Input.addEventListener('change', handleUploads);
+        generateBtn.addEventListener('click', generateVideo);
+    </script>
 </body>
 </html>
